@@ -7,6 +7,8 @@ static constexpr float i_vel_lerp = 0.2f;
 
 static constexpr float i_player_move_spd = 3.0f;
 
+static constexpr int i_proj_limit = 1024;
+
 static constexpr float i_camera_scale = 2.0f;
 static constexpr float i_camera_pos_lerp = 0.25f;
 static constexpr float i_camera_look_dist_limit = 24.0f;
@@ -33,6 +35,7 @@ enum e_render_surface {
 enum e_sprite_index {
     ek_sprite_index_pixel,
     ek_sprite_index_player,
+    ek_sprite_index_bullet,
     ek_sprite_index_cursor,
 
     eks_sprite_cnt
@@ -42,11 +45,17 @@ static constexpr zf4::s_static_array<zf4::s_rect_i, eks_sprite_cnt> i_sprite_src
     .elems_raw = {
         {0, 0, 1, 1},
         {8, 0, 24, 40},
+        {2, 18, 4, 4},
         {0, 8, 8, 8}
     }
 };
 
 struct s_player {
+    zf4::s_vec_2d pos;
+    zf4::s_vec_2d vel;
+};
+
+struct s_projectile {
     zf4::s_vec_2d pos;
     zf4::s_vec_2d vel;
 };
@@ -57,6 +66,7 @@ struct s_camera {
 
 struct s_game {
     s_player player;
+    zf4::s_static_list<s_projectile, i_proj_limit> projectiles;
     s_camera cam;
 };
 
@@ -118,6 +128,25 @@ static bool GameTick(const zf4::s_game_ptrs& game_ptrs, const double fps) {
     }
 
     //
+    // Projectiles
+    //
+    for (int i = 0; i < game->projectiles.len; ++i) {
+        s_projectile& proj = game->projectiles[i];
+        proj.pos += proj.vel;
+    }
+
+    //
+    // Player Shooting
+    //
+    if (zf4::MouseButtonPressed(zf4::ek_mouse_button_code_left, game_ptrs.window.input_state, game_ptrs.window.input_state_saved)) {
+        if (game->projectiles.len < i_proj_limit) {
+            s_projectile& proj = game->projectiles[game->projectiles.len++];
+            proj.pos = game->player.pos;
+            proj.vel = zf4::Normal(ScreenToCameraPos(game_ptrs.window.input_state.mouse_pos, game->cam.pos, game_ptrs.window.size_cache) - game->player.pos) * 11.0f;
+        }
+    }
+
+    //
     // Camera
     //
     {
@@ -148,6 +177,11 @@ static bool DrawGame(zf4::s_draw_phase_state& draw_phase_state, const zf4::s_gam
     draw_phase_state.view_mat = LoadCameraViewMatrix4x4(game->cam.pos, game_ptrs.window.size_cache);
 
     zf4::SubmitTextureToRenderBatch(0, i_sprite_src_rects[ek_sprite_index_player], game->player.pos, draw_phase_state, game_ptrs.renderer);
+
+    for (int i = 0; i < game->projectiles.len; ++i) {
+        const s_projectile& proj = game->projectiles[i];
+        zf4::SubmitTextureToRenderBatch(0, i_sprite_src_rects[ek_sprite_index_bullet], proj.pos, draw_phase_state, game_ptrs.renderer);
+    }
 
     zf4::FlushTextureBatch(draw_phase_state, game_ptrs.renderer);
 
